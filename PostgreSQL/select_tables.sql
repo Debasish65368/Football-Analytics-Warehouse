@@ -1,10 +1,10 @@
-select * from teams;
-select * from matches where division_name = 'ROM';
-select * from matches WHERE ft_home_goals is null;
+select * from dim_team;
+
+select m.* 
+from fact_matches m
+join dim_division d on m.division_key = d.division_key
+where d.division_name = 'ROM';
+
+select * from fact_matches WHERE ft_home_goals is null;
 
 -- select * from avg_goals_per_team;
-
--- drop view avg_goals_per_team;
-
-
-

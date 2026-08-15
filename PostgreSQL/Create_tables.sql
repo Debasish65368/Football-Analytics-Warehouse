@@ -1,12 +1,17 @@
 -- 1. Először töröljük a view-kat
 DROP VIEW IF EXISTS 
     avg_goals_per_team,
-    v_team_scoring_efficiency,
-    v_team_discipline,
+    win_ratio_per_team,
+    division_stats,
+    v_team_elo_trend,
     v_team_shooting_efficiency,
     v_team_aggressiveness,
+    v_team_scoring_efficiency,
     v_team_goal_difference,
-    v_team_elo_trend
+    v_team_season_ranking,
+    v_team_running_totals,
+    v_team_mom_goals,
+    v_team_performance_tier
 CASCADE;
 
 -- 2. Ezután a táblákat
