@@ -11,8 +11,8 @@ Entry point of the ETL pipeline:
 import pandas as pd
 import logging
 
-from src.insert_datas import load_teams, load_matches, create_views
-from src.clean_data import clean_and_validate, change_team_names_to_ids
+from src.insert_datas import load_teams, load_divisions, load_dates, load_matches, create_views
+from src.clean_data import clean_and_validate, map_dimensions_to_fact
 from src.connect_db import ensure_database_initialized
 from src.connect_db import conn
 
@@ -38,18 +38,20 @@ def main():
             # Clean data
             df = clean_and_validate(df)
 
-            # Insert teams into teams table
+            # Load dimension tables
             load_teams(df)
+            load_divisions(df)
+            load_dates(df)
 
-            # Replcae team names with IDs in a new csv
-            change_team_names_to_ids(CSV_RAW_PATH, CSV_WITH_ID_PATH)
+            # Map dimensions to facts in a new csv
+            map_dimensions_to_fact(CSV_RAW_PATH, CSV_WITH_ID_PATH)
 
-            # Load new csv data file
-            df = pd.read_csv(CSV_WITH_ID_PATH,encoding='utf-8',sep=',')
+            # Load mapped csv data file
+            df_mapped = pd.read_csv(CSV_WITH_ID_PATH, encoding='utf-8', sep=',')
 
             # Insert matches
-            load_matches(df)
-            logging.info("Datas loaded inot the database succesfully!")
+            load_matches(df_mapped)
+            logging.info("Datas loaded into the database successfully!")
 
             # ---> View-k létrehozása
             create_views(conn)
@@ -65,4 +67,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

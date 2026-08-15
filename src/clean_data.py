@@ -19,38 +19,42 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
-def change_team_names_to_ids(csv_file: str, csv_file_out: str) -> None:
+def map_dimensions_to_fact(csv_file: str, csv_file_out: str) -> None:
     """
-    Replace team names with corresponding team IDs based on the database,
+    Map dimensional keys (team, date, division) to the fact table data
     and save the updated matches to a new CSV file.
 
     Args:
-        csv_file (str): Path to the input CSV containing team names.
-        csv_file_out (str): Path to the output CSV with team IDs.
+        csv_file (str): Path to the input CSV.
+        csv_file_out (str): Path to the output CSV with dimensional keys.
     """
 
     matches_df = pd.read_csv(csv_file)
-    teams_df = pd.read_sql("SELECT * FROM teams;",conn)
+    
+    # Map teams
+    teams_df = pd.read_sql("SELECT * FROM dim_team;", conn)
+    team_mapping = dict(zip(teams_df['team_name'], teams_df['team_key']))
+    matches_df = matches_df.rename(columns={"home_team": "home_team_key", "away_team": "away_team_key"})
+    matches_df['home_team_key'] = matches_df['home_team_key'].map(team_mapping)
+    matches_df['away_team_key'] = matches_df['away_team_key'].map(team_mapping)
+    
+    if matches_df["home_team_key"].isnull().any() or matches_df["away_team_key"].isnull().any():
+        logging.warning("Some team names could not be mapped to keys.")
 
-    # Mapping team name - team id
-    team_mapping = dict(zip(teams_df['team_name'], teams_df['team_id']))
-
-    # Rename columns
-    matches_df = matches_df.rename(columns={"home_team": "home_team_id","away_team": "away_team_id"})
-
-    # HomeTeam and AwayTeam replace to IDs
-    matches_df['home_team_id'] = matches_df['home_team_id'].map(team_mapping)
-    matches_df['away_team_id'] = matches_df['away_team_id'].map(team_mapping)
-
-    # Check for unmapped teams
-    if matches_df["home_team_id"].isnull().any() or matches_df["away_team_id"].isnull().any():
-        logging.warning("Some team names could not be mapped to IDs.")
+    # Map divisions
+    divs_df = pd.read_sql("SELECT * FROM dim_division;", conn)
+    div_mapping = dict(zip(divs_df['division_name'], divs_df['division_key']))
+    matches_df['division_key'] = matches_df['division_name'].map(div_mapping)
+    
+    if matches_df["division_key"].isnull().any():
+        logging.warning("Some division names could not be mapped to keys.")
+        
+    # Map dates (create date_key as YYYYMMDD)
+    matches_df['date_key'] = pd.to_datetime(matches_df['match_date']).dt.strftime('%Y%m%d').astype(int)
 
     # Save it into new csv file
     matches_df.to_csv(csv_file_out, index=False)
-
     logging.info(f"File {csv_file_out} created successfully.")
-
 
 def validate_data_column_names(df: pd.DataFrame) -> pd.DataFrame:
     """

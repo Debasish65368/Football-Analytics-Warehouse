@@ -44,7 +44,7 @@ def ensure_database_initialized() -> bool:
         bool: True if tables exist and contain data, False otherwise.
     """
 
-    required_tables = {"teams", "matches"}
+    required_tables = {"dim_team", "dim_date", "dim_division", "fact_matches"}
     has_data = True
 
     try:
@@ -53,7 +53,7 @@ def ensure_database_initialized() -> bool:
             cursor.execute("""
                 SELECT table_name
                 FROM information_schema.tables
-                WHERE table_schema = 'public';
+                WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
             """)
             existing_tables = {row[0] for row in cursor.fetchall()}
 

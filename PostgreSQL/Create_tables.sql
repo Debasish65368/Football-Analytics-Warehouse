@@ -1,4 +1,3 @@
-
 -- 1. Először töröljük a view-kat
 DROP VIEW IF EXISTS 
     avg_goals_per_team,
@@ -11,26 +10,43 @@ DROP VIEW IF EXISTS
 CASCADE;
 
 -- 2. Ezután a táblákat
+DROP TABLE IF EXISTS fact_matches CASCADE;
+DROP TABLE IF EXISTS dim_division CASCADE;
+DROP TABLE IF EXISTS dim_date CASCADE;
+DROP TABLE IF EXISTS dim_team CASCADE;
 DROP TABLE IF EXISTS matches CASCADE;
 DROP TABLE IF EXISTS teams CASCADE;
 
--- 1. Csapatok táblája
-CREATE TABLE teams (
-    team_id SERIAL PRIMARY KEY,
+-- Dimension Tables
+CREATE TABLE dim_team (
+    team_key SERIAL PRIMARY KEY,
     team_name VARCHAR(50) NOT NULL UNIQUE
 );
 
--- 2. Meccsek táblája
-CREATE TABLE matches (
+CREATE TABLE dim_date (
+    date_key INT PRIMARY KEY,
+    full_date DATE NOT NULL UNIQUE,
+    month INT NOT NULL,
+    quarter INT NOT NULL,
+    season VARCHAR(10) NOT NULL
+);
+
+CREATE TABLE dim_division (
+    division_key SERIAL PRIMARY KEY,
+    division_name VARCHAR(4) NOT NULL UNIQUE
+);
+
+-- Fact Table
+CREATE TABLE fact_matches (
     match_id SERIAL PRIMARY KEY,
-    match_date DATE NOT NULL,
-    home_team_id INT NOT NULL REFERENCES teams(team_id),
-    away_team_id INT NOT NULL REFERENCES teams(team_id),
-	division_name CHAR(4),
+    date_key INT NOT NULL REFERENCES dim_date(date_key),
+    division_key INT NOT NULL REFERENCES dim_division(division_key),
+    home_team_key INT NOT NULL REFERENCES dim_team(team_key),
+    away_team_key INT NOT NULL REFERENCES dim_team(team_key),
     ft_home_goals INT,
     ft_away_goals INT,
     ft_result CHAR(1),  -- H / D / A
-	home_elo INT,
+    home_elo INT,
     away_elo INT,
     home_form3 INT,
     home_form5 INT,
@@ -39,7 +55,7 @@ CREATE TABLE matches (
     ht_home_goals INT,
     ht_away_goals INT,
     ht_result CHAR(1),   -- H / D / A
-	home_shots INT,
+    home_shots INT,
     away_shots INT,
     home_target INT,
     away_target INT,
@@ -54,5 +70,6 @@ CREATE TABLE matches (
 );
 
 -- Indexek a gyors kereséshez
-CREATE INDEX idx_matches_date ON matches(match_date);
-CREATE INDEX idx_matches_teams ON matches(home_team_id, away_team_id);
+CREATE INDEX idx_fact_matches_date ON fact_matches(date_key);
+CREATE INDEX idx_fact_matches_division ON fact_matches(division_key);
+CREATE INDEX idx_fact_matches_teams ON fact_matches(home_team_key, away_team_key);
