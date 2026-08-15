@@ -16,5 +16,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY src/ ./src
 COPY Data/ ./Data
+COPY PostgreSQL/ ./PostgreSQL
 
 CMD ["python", "main.py"]
