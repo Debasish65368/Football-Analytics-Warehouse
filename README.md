@@ -22,16 +22,15 @@ An end-to-end data engineering and analytics project that transforms raw footbal
 
 ## 🏗️ Architecture
 
+```
 CSV (raw match data)
-   │
-   ▼
+        ▼
 Python ETL (clean → validate → load)
-   │
-   ▼
+        ▼
 PostgreSQL — Star Schema (Docker)
-   │
-   ▼
+        ▼
 Power BI — 4-page interactive dashboard
+```
 
 The entire stack — PostgreSQL and the Python ETL application — runs in Docker containers, orchestrated with Docker Compose.
 
@@ -135,13 +134,15 @@ A 4-page interactive report built on top of the star schema and analytical views
 
 ## 📁 Project Structure
 
+```
 Football-project-main/
-├── Data/                  # Raw and processed CSV files
-├── PostgreSQL/             # Schema DDL and view definitions
-├── Power-BI/               # .pbix dashboard file
-├── screenshots/             # Dashboard page screenshots (used in this README)
-├── src/                    # ETL Python modules
-├── main.py                 # Pipeline entry point
+├── Data/              # Raw and processed CSV files
+├── PostgreSQL/         # Schema DDL and view definitions
+├── Power-BI/           # .pbix dashboard file
+├── screenshots/        # Dashboard page screenshots
+├── src/                # ETL Python modules
+├── main.py             # Pipeline entry point
 ├── Dockerfile
 ├── docker-compose.yml
 └── requirements.txt
+```
