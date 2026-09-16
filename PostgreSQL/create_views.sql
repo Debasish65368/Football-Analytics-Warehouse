@@ -66,27 +66,32 @@ FROM fact_matches m
 JOIN dim_division d ON m.division_key = d.division_key
 GROUP BY d.division_name;
 
--- 4. v_team_elo_trend: átlag ELO időben (csapatonként, top 20)
+-- 4. v_team_elo_trend: average ELO per team per calendar month
+-- NULL ELO rows are excluded (WHERE clause) so they do not distort the average.
+-- ORDER BY and LIMIT removed: Top-N filtering belongs in Power BI, not the warehouse view.
 CREATE OR REPLACE VIEW v_team_elo_trend AS
-SELECT 
+SELECT
     t.team_name,
     DATE_TRUNC('month', d.full_date) AS month,
-    COALESCE(
-        ROUND(
-            AVG(
-                CASE 
-                    WHEN m.home_team_key = t.team_key THEN COALESCE(m.home_elo,0)
-                    ELSE COALESCE(m.away_elo,0)
-                END
-            ),
-        2),
-    0) AS avg_elo
+    ROUND(
+        AVG(
+            CASE
+                WHEN m.home_team_key = t.team_key THEN m.home_elo
+                ELSE m.away_elo
+            END
+        ),
+        2
+    ) AS avg_elo
 FROM fact_matches m
 JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
 JOIN dim_date d ON d.date_key = m.date_key
-GROUP BY t.team_name, DATE_TRUNC('month', d.full_date)
-ORDER BY avg_elo DESC
-LIMIT 20;
+WHERE (
+    CASE
+        WHEN m.home_team_key = t.team_key THEN m.home_elo
+        ELSE m.away_elo
+    END
+) IS NOT NULL
+GROUP BY t.team_name, DATE_TRUNC('month', d.full_date);
 
 -- 5. v_team_shooting_efficiency
 CREATE OR REPLACE VIEW v_team_shooting_efficiency AS
