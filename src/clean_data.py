@@ -19,14 +19,16 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
-def map_dimensions_to_fact(df: pd.DataFrame, csv_file_out: str) -> None:
+def map_dimensions_to_fact(df: pd.DataFrame) -> pd.DataFrame:
     """
     Map dimensional keys (team, date, division) to the fact table data
-    and save the updated matches to a new CSV file.
+    and return the updated matches DataFrame.
 
     Args:
         df (pd.DataFrame): The cleaned DataFrame.
-        csv_file_out (str): Path to the output CSV with dimensional keys.
+        
+    Returns:
+        pd.DataFrame: The mapped DataFrame ready for fact loading.
     """
 
     matches_df = df.copy()
@@ -73,9 +75,7 @@ def map_dimensions_to_fact(df: pd.DataFrame, csv_file_out: str) -> None:
     matches_df['season'] = matches_df.apply(get_season, axis=1)
     matches_df.drop(columns=['match_date_dt', 'year', 'month', 'season_style'], inplace=True)
 
-    # Save it into new csv file
-    matches_df.to_csv(csv_file_out, index=False)
-    logging.info(f"File {csv_file_out} created successfully.")
+    return matches_df
 
 def validate_data_column_names(df: pd.DataFrame) -> pd.DataFrame:
     """

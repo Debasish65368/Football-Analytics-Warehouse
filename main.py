@@ -18,7 +18,6 @@ from src.connect_db import conn
 
 # CSV files paths
 CSV_RAW_PATH = "Data/Matches.csv" 
-CSV_WITH_ID_PATH = "Data/Matches_with_id.csv"
 
 # Configure logging
 logging.basicConfig(
@@ -43,11 +42,8 @@ def main():
             load_divisions(df)
             load_dates(df)
 
-            # Map dimensions to facts in a new csv
-            map_dimensions_to_fact(df, CSV_WITH_ID_PATH)
-
-            # Load mapped csv data file
-            df_mapped = pd.read_csv(CSV_WITH_ID_PATH, encoding='utf-8', sep=',')
+            # Map dimensions to facts
+            df_mapped = map_dimensions_to_fact(df)
 
             # Insert matches
             load_matches(df_mapped)
