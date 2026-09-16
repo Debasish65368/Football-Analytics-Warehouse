@@ -61,6 +61,7 @@ def main():
         conn.close()
     except Exception as e:
         logging.error("ETL process failed",exc_info=True)
+        raise
     finally:
         conn.close()
         logging.info("Database connection closed.")
