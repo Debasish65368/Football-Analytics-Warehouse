@@ -132,6 +132,7 @@ def load_matches(df: pd.DataFrame) -> None:
             home_yellow, away_yellow, home_red, away_red
         )
         VALUES %s
+        ON CONFLICT (date_key, home_team_key, away_team_key) DO NOTHING;
     """
     try:
         execute_values(cursor, insert_query, values)

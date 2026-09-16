@@ -72,7 +72,8 @@ CREATE TABLE fact_matches (
     home_yellow INT,
     away_yellow INT,
     home_red INT,
-    away_red INT
+    away_red INT,
+    UNIQUE (date_key, home_team_key, away_team_key)
 );
 
 -- Indexek a gyors kereséshez
