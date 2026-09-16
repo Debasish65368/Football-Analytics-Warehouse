@@ -57,7 +57,7 @@ def ensure_database_initialized() -> bool:
             """)
             existing_tables = {row[0] for row in cursor.fetchall()}
 
-            if existing_tables == required_tables:
+            if required_tables.issubset(existing_tables):
                 # Check if tables have data
                 for table in required_tables:
                     cursor.execute(f"SELECT 1 FROM {table} LIMIT 1;")
