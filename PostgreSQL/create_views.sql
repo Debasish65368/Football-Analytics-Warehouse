@@ -133,9 +133,7 @@ SELECT
     ) AS aggressiveness_score
 FROM fact_matches m
 JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
-GROUP BY t.team_name
-ORDER BY aggressiveness_score DESC
-LIMIT 20;
+GROUP BY t.team_name;
 
 -- 7. v_team_scoring_efficiency: Csapat hatékonysági mutató: gól/lövés, gól/kapura lövés
 CREATE OR REPLACE VIEW v_team_scoring_efficiency AS
