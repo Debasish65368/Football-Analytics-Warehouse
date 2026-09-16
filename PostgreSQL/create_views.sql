@@ -227,13 +227,13 @@ SELECT
             WHEN m.ft_result = 'D' THEN 1
             ELSE 0 
         END
-    ) OVER (PARTITION BY d.season, t.team_name ORDER BY d.full_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_points,
+    ) OVER (PARTITION BY d.season, t.team_name ORDER BY d.full_date, m.match_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_points,
     SUM(
         CASE 
             WHEN t.team_key = m.home_team_key THEN m.ft_home_goals 
             ELSE m.ft_away_goals 
         END
-    ) OVER (PARTITION BY d.season, t.team_name ORDER BY d.full_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_goals
+    ) OVER (PARTITION BY d.season, t.team_name ORDER BY d.full_date, m.match_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_goals
 FROM fact_matches m
 JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
 JOIN dim_date d ON d.date_key = m.date_key;
@@ -259,8 +259,14 @@ SELECT
     year,
     month,
     goals_scored,
-    LAG(goals_scored) OVER (PARTITION BY team_name ORDER BY year, month) AS prev_month_goals,
-    goals_scored - LAG(goals_scored) OVER (PARTITION BY team_name ORDER BY year, month) AS mom_diff
+    CASE
+        WHEN (year * 12 + month) - LAG(year * 12 + month) OVER (PARTITION BY team_name ORDER BY year, month) = 1
+        THEN LAG(goals_scored) OVER (PARTITION BY team_name ORDER BY year, month)
+    END AS prev_month_goals,
+    CASE
+        WHEN (year * 12 + month) - LAG(year * 12 + month) OVER (PARTITION BY team_name ORDER BY year, month) = 1
+        THEN goals_scored - LAG(goals_scored) OVER (PARTITION BY team_name ORDER BY year, month)
+    END AS mom_diff
 FROM monthly_goals;
 
 -- 12. v_team_performance_tier: A team performance-tier segmentation view (High/Mid/Low)
@@ -268,6 +274,7 @@ CREATE OR REPLACE VIEW v_team_performance_tier AS
 WITH win_ratios AS (
     SELECT
         t.team_name,
+        COUNT(*) AS matches_played,
         SUM(CASE WHEN m.ft_result = 'H' AND t.team_key = m.home_team_key THEN 1
                  WHEN m.ft_result = 'A' AND t.team_key = m.away_team_key THEN 1 ELSE 0 END) 
                  / NULLIF(COUNT(*),0)::float AS win_ratio
@@ -279,6 +286,7 @@ SELECT
     team_name,
     win_ratio,
     CASE 
+        WHEN matches_played < 10 THEN 'Insufficient Data'
         WHEN win_ratio >= 0.5 THEN 'High'
         WHEN win_ratio >= 0.3 THEN 'Mid'
         ELSE 'Low' 
