@@ -181,7 +181,7 @@ GROUP BY ht.team_name, at.team_name;
 CREATE OR REPLACE VIEW v_team_season_ranking AS
 WITH team_season_stats AS (
     SELECT 
-        d.season,
+        m.season,
         div.division_name,
         t.team_name,
         SUM(CASE WHEN m.ft_result = 'H' AND t.team_key = m.home_team_key THEN 1
@@ -192,7 +192,7 @@ WITH team_season_stats AS (
     JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
     JOIN dim_date d ON d.date_key = m.date_key
     JOIN dim_division div ON div.division_key = m.division_key
-    GROUP BY d.season, div.division_name, t.team_name
+    GROUP BY m.season, div.division_name, t.team_name
 )
 SELECT 
     season,
@@ -207,7 +207,7 @@ FROM team_season_stats;
 -- 10. v_team_running_totals: Running totals for points and goals across a season
 CREATE OR REPLACE VIEW v_team_running_totals AS
 SELECT 
-    d.season,
+    m.season,
     d.full_date,
     t.team_name,
     CASE 
@@ -227,13 +227,13 @@ SELECT
             WHEN m.ft_result = 'D' THEN 1
             ELSE 0 
         END
-    ) OVER (PARTITION BY d.season, t.team_name ORDER BY d.full_date, m.match_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_points,
+    ) OVER (PARTITION BY m.season, t.team_name ORDER BY d.full_date, m.match_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_points,
     SUM(
         CASE 
             WHEN t.team_key = m.home_team_key THEN m.ft_home_goals 
             ELSE m.ft_away_goals 
         END
-    ) OVER (PARTITION BY d.season, t.team_name ORDER BY d.full_date, m.match_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_goals
+    ) OVER (PARTITION BY m.season, t.team_name ORDER BY d.full_date, m.match_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumulative_goals
 FROM fact_matches m
 JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
 JOIN dim_date d ON d.date_key = m.date_key;
@@ -243,7 +243,7 @@ CREATE OR REPLACE VIEW v_team_mom_goals AS
 WITH monthly_goals AS (
     SELECT 
         t.team_name,
-        d.season,
+        m.season,
         EXTRACT(YEAR FROM d.full_date) AS year,
         d.month,
         SUM(CASE WHEN t.team_key = m.home_team_key THEN m.ft_home_goals 
@@ -251,7 +251,7 @@ WITH monthly_goals AS (
     FROM fact_matches m
     JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
     JOIN dim_date d ON d.date_key = m.date_key
-    GROUP BY t.team_name, d.season, EXTRACT(YEAR FROM d.full_date), d.month
+    GROUP BY t.team_name, m.season, EXTRACT(YEAR FROM d.full_date), d.month
 )
 SELECT 
     team_name,

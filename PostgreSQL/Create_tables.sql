@@ -32,19 +32,20 @@ CREATE TABLE dim_date (
     date_key INT PRIMARY KEY,
     full_date DATE NOT NULL UNIQUE,
     month INT NOT NULL,
-    quarter INT NOT NULL,
-    season VARCHAR(10) NOT NULL
+    quarter INT NOT NULL
 );
 
 CREATE TABLE dim_division (
     division_key SERIAL PRIMARY KEY,
-    division_name VARCHAR(4) NOT NULL UNIQUE
+    division_name VARCHAR(4) NOT NULL UNIQUE,
+    season_style VARCHAR(10) NOT NULL
 );
 
 -- Fact Table
 CREATE TABLE fact_matches (
     match_id SERIAL PRIMARY KEY,
     date_key INT NOT NULL REFERENCES dim_date(date_key),
+    season VARCHAR(10) NOT NULL,
     division_key INT NOT NULL REFERENCES dim_division(division_key),
     home_team_key INT NOT NULL REFERENCES dim_team(team_key),
     away_team_key INT NOT NULL REFERENCES dim_team(team_key),

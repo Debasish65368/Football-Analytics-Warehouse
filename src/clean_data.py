@@ -30,14 +30,14 @@ def map_dimensions_to_fact(csv_file: str, csv_file_out: str) -> None:
     """
 
     matches_df = pd.read_csv(csv_file)
-    
+
     # Map teams
     teams_df = pd.read_sql("SELECT * FROM dim_team;", conn)
     team_mapping = dict(zip(teams_df['team_name'], teams_df['team_key']))
     matches_df = matches_df.rename(columns={"home_team": "home_team_key", "away_team": "away_team_key"})
     matches_df['home_team_key'] = matches_df['home_team_key'].map(team_mapping)
     matches_df['away_team_key'] = matches_df['away_team_key'].map(team_mapping)
-    
+
     if matches_df["home_team_key"].isnull().any() or matches_df["away_team_key"].isnull().any():
         logging.warning("Some team names could not be mapped to keys.")
 
@@ -45,12 +45,30 @@ def map_dimensions_to_fact(csv_file: str, csv_file_out: str) -> None:
     divs_df = pd.read_sql("SELECT * FROM dim_division;", conn)
     div_mapping = dict(zip(divs_df['division_name'], divs_df['division_key']))
     matches_df['division_key'] = matches_df['division_name'].map(div_mapping)
-    
+
     if matches_df["division_key"].isnull().any():
         logging.warning("Some division names could not be mapped to keys.")
-        
+
     # Map dates (create date_key as YYYYMMDD)
     matches_df['date_key'] = pd.to_datetime(matches_df['match_date']).dt.strftime('%Y%m%d').astype(int)
+
+    # Generate season
+    matches_df['match_date_dt'] = pd.to_datetime(matches_df['match_date'])
+    matches_df['year'] = matches_df['match_date_dt'].dt.year
+    matches_df['month'] = matches_df['match_date_dt'].dt.month
+
+    style_mapping = dict(zip(divs_df['division_name'], divs_df['season_style']))
+    matches_df['season_style'] = matches_df['division_name'].map(style_mapping)
+
+    def get_season(row):
+        y = row['year']
+        if row['season_style'] == 'CALENDAR':
+            return str(y)
+        else:
+            return f"{y}-{(y+1)%100:02d}" if row['month'] >= 8 else f"{y-1}-{y%100:02d}"
+
+    matches_df['season'] = matches_df.apply(get_season, axis=1)
+    matches_df.drop(columns=['match_date_dt', 'year', 'month', 'season_style'], inplace=True)
 
     # Save it into new csv file
     matches_df.to_csv(csv_file_out, index=False)

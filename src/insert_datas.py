@@ -45,14 +45,18 @@ def load_divisions(df: pd.DataFrame) -> None:
     """
     Load unique divisions into the `dim_division` table.
     """
-    divisions = df[['division_name']].drop_duplicates().dropna()
+    divisions = df[['division_name']].drop_duplicates().dropna().copy()
+    calendar_leagues = {'SWE', 'NOR', 'USA', 'IRL', 'FIN', 'JAP', 'CHN', 'BRA', 'ARG'}
+    divisions['season_style'] = divisions['division_name'].apply(
+        lambda x: 'CALENDAR' if x in calendar_leagues else 'AUG_MAY'
+    )
     cursor = conn.cursor()
     insert_query = """
-        INSERT INTO dim_division (division_name)
+        INSERT INTO dim_division (division_name, season_style)
         VALUES %s
         ON CONFLICT (division_name) DO NOTHING;
     """
-    values = [(div,) for div in divisions["division_name"]]
+    values = [tuple(x) for x in divisions[['division_name', 'season_style']].to_numpy()]
     try:
         execute_values(cursor, insert_query, values)
         conn.commit()
@@ -80,16 +84,11 @@ def load_dates(df: pd.DataFrame) -> None:
         full_date = d.date()
         month = d.month
         quarter = d.quarter
-        year = d.year
-        if month >= 8:
-            season = f"{year}-{(year+1)%100:02d}"
-        else:
-            season = f"{year-1}-{year%100:02d}"
-        dates_data.append((date_key, full_date, month, quarter, season))
+        dates_data.append((date_key, full_date, month, quarter))
         
     cursor = conn.cursor()
     insert_query = """
-        INSERT INTO dim_date (date_key, full_date, month, quarter, season)
+        INSERT INTO dim_date (date_key, full_date, month, quarter)
         VALUES %s
         ON CONFLICT (date_key) DO NOTHING;
     """
@@ -110,7 +109,7 @@ def load_matches(df: pd.DataFrame) -> None:
     """
     cursor = conn.cursor()
     df_matches = df[[
-        'date_key', 'division_key', 'home_team_key', 'away_team_key',
+        'date_key', 'season', 'division_key', 'home_team_key', 'away_team_key',
         'ft_home_goals', 'ft_away_goals', 'ft_result',
         'home_elo', 'away_elo', 'home_form3', 'home_form5', 'away_form3', 'away_form5',
         'ht_home_goals', 'ht_away_goals', 'ht_result',
@@ -124,7 +123,7 @@ def load_matches(df: pd.DataFrame) -> None:
 
     insert_query = """
         INSERT INTO fact_matches (
-            date_key, division_key, home_team_key, away_team_key,
+            date_key, season, division_key, home_team_key, away_team_key,
             ft_home_goals, ft_away_goals, ft_result,
             home_elo, away_elo, home_form3, home_form5, away_form3, away_form5,
             ht_home_goals, ht_away_goals, ht_result,
