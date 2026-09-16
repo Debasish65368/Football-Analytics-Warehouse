@@ -182,6 +182,7 @@ CREATE OR REPLACE VIEW v_team_season_ranking AS
 WITH team_season_stats AS (
     SELECT 
         d.season,
+        div.division_name,
         t.team_name,
         SUM(CASE WHEN m.ft_result = 'H' AND t.team_key = m.home_team_key THEN 1
                  WHEN m.ft_result = 'A' AND t.team_key = m.away_team_key THEN 1 ELSE 0 END) AS total_wins,
@@ -190,15 +191,17 @@ WITH team_season_stats AS (
     FROM fact_matches m
     JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
     JOIN dim_date d ON d.date_key = m.date_key
-    GROUP BY d.season, t.team_name
+    JOIN dim_division div ON div.division_key = m.division_key
+    GROUP BY d.season, div.division_name, t.team_name
 )
 SELECT 
     season,
+    division_name,
     team_name,
     total_wins,
-    RANK() OVER(PARTITION BY season ORDER BY total_wins DESC) AS win_rank,
+    RANK() OVER(PARTITION BY season, division_name ORDER BY total_wins DESC) AS win_rank,
     total_goals,
-    RANK() OVER(PARTITION BY season ORDER BY total_goals DESC) AS goal_rank
+    RANK() OVER(PARTITION BY season, division_name ORDER BY total_goals DESC) AS goal_rank
 FROM team_season_stats;
 
 -- 10. v_team_running_totals: Running totals for points and goals across a season
