@@ -172,9 +172,7 @@ SELECT
 FROM fact_matches m
 JOIN dim_team ht ON ht.team_key = m.home_team_key
 JOIN dim_team at ON at.team_key = m.away_team_key
-GROUP BY ht.team_name, at.team_name
-ORDER BY ABS(SUM(m.ft_home_goals - m.ft_away_goals)) DESC
-LIMIT 20;
+GROUP BY ht.team_name, at.team_name;
 
 
 -- NEW ANALYTICAL VIEWS
