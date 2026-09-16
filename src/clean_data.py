@@ -132,8 +132,6 @@ def clean_and_validate(df: pd.DataFrame) -> pd.DataFrame:
     df = drop_null_values(df)
     df = validate_values(df)
 
-    # save it again
-    df.to_csv('Data/Matches.csv', index=False)
 
     logging.info("Values validated successfully.")
 
