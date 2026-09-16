@@ -19,17 +19,17 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
-def map_dimensions_to_fact(csv_file: str, csv_file_out: str) -> None:
+def map_dimensions_to_fact(df: pd.DataFrame, csv_file_out: str) -> None:
     """
     Map dimensional keys (team, date, division) to the fact table data
     and save the updated matches to a new CSV file.
 
     Args:
-        csv_file (str): Path to the input CSV.
+        df (pd.DataFrame): The cleaned DataFrame.
         csv_file_out (str): Path to the output CSV with dimensional keys.
     """
 
-    matches_df = pd.read_csv(csv_file)
+    matches_df = df.copy()
 
     # Map teams
     teams_df = pd.read_sql("SELECT * FROM dim_team;", conn)
@@ -39,7 +39,9 @@ def map_dimensions_to_fact(csv_file: str, csv_file_out: str) -> None:
     matches_df['away_team_key'] = matches_df['away_team_key'].map(team_mapping)
 
     if matches_df["home_team_key"].isnull().any() or matches_df["away_team_key"].isnull().any():
-        logging.warning("Some team names could not be mapped to keys.")
+        missing_home = matches_df['home_team_key'].isnull().sum()
+        missing_away = matches_df['away_team_key'].isnull().sum()
+        raise ValueError(f"Team mapping failed! Unmapped Home Teams: {missing_home}, Away Teams: {missing_away}")
 
     # Map divisions
     divs_df = pd.read_sql("SELECT * FROM dim_division;", conn)
@@ -47,7 +49,8 @@ def map_dimensions_to_fact(csv_file: str, csv_file_out: str) -> None:
     matches_df['division_key'] = matches_df['division_name'].map(div_mapping)
 
     if matches_df["division_key"].isnull().any():
-        logging.warning("Some division names could not be mapped to keys.")
+        missing_div = matches_df['division_key'].isnull().sum()
+        raise ValueError(f"Division mapping failed! Unmapped Divisions: {missing_div}")
 
     # Map dates (create date_key as YYYYMMDD)
     matches_df['date_key'] = pd.to_datetime(matches_df['match_date']).dt.strftime('%Y%m%d').astype(int)

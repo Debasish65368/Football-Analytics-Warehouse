@@ -44,7 +44,7 @@ def main():
             load_dates(df)
 
             # Map dimensions to facts in a new csv
-            map_dimensions_to_fact(CSV_RAW_PATH, CSV_WITH_ID_PATH)
+            map_dimensions_to_fact(df, CSV_WITH_ID_PATH)
 
             # Load mapped csv data file
             df_mapped = pd.read_csv(CSV_WITH_ID_PATH, encoding='utf-8', sep=',')
