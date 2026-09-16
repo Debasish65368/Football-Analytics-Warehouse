@@ -1,12 +1,48 @@
+-- Drop all analytical views before recreating them.
+-- All 12 views are independent (each queries fact_matches and dim_* directly),
+-- so they can be dropped together in a single statement.
+DROP VIEW IF EXISTS
+    avg_goals_per_team,
+    win_ratio_per_team,
+    division_stats,
+    v_team_elo_trend,
+    v_team_shooting_efficiency,
+    v_team_aggressiveness,
+    v_team_scoring_efficiency,
+    v_team_goal_difference,
+    v_team_season_ranking,
+    v_team_running_totals,
+    v_team_mom_goals,
+    v_team_performance_tier;
+
 -- 1. avg_goals_per_team
+-- Each team appears twice per match it plays: once as home, once as away.
+-- UNION ALL combines both perspectives so every match is counted exactly once per team.
 CREATE OR REPLACE VIEW avg_goals_per_team AS
-SELECT 
+WITH all_team_matches AS (
+    -- Home perspective: the team is the home side
+    SELECT
+        m.home_team_key AS team_key,
+        m.ft_home_goals AS goals_scored,
+        m.ft_away_goals AS goals_conceded
+    FROM fact_matches m
+
+    UNION ALL
+
+    -- Away perspective: the team is the away side
+    SELECT
+        m.away_team_key AS team_key,
+        m.ft_away_goals AS goals_scored,
+        m.ft_home_goals AS goals_conceded
+    FROM fact_matches m
+)
+SELECT
     t.team_name,
-    AVG(m.ft_home_goals) AS avg_home_goals,
-    AVG(m.ft_away_goals) AS avg_away_goals,
-    (AVG(m.ft_home_goals) + AVG(m.ft_away_goals)) / 2 AS avg_total_goals
-FROM fact_matches m
-JOIN dim_team t ON t.team_key = m.home_team_key
+    AVG(a.goals_scored)                          AS avg_goals_scored,
+    AVG(a.goals_conceded)                        AS avg_goals_conceded,
+    AVG(a.goals_scored + a.goals_conceded)       AS avg_total_goals
+FROM all_team_matches a
+JOIN dim_team t ON t.team_key = a.team_key
 GROUP BY t.team_name;
 
 -- 2. win_ratio_per_team

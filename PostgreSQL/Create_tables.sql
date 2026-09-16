@@ -51,8 +51,8 @@ CREATE TABLE fact_matches (
     ft_home_goals INT,
     ft_away_goals INT,
     ft_result CHAR(1),  -- H / D / A
-    home_elo INT,
-    away_elo INT,
+    home_elo NUMERIC(7,2),
+    away_elo NUMERIC(7,2),
     home_form3 INT,
     home_form5 INT,
     away_form3 INT,
