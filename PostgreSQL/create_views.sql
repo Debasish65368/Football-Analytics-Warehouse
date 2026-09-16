@@ -161,9 +161,7 @@ SELECT
     ) AS goals_per_on_target
 FROM fact_matches m
 JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
-GROUP BY t.team_name
-ORDER BY goals_per_shot DESC
-LIMIT 20;
+GROUP BY t.team_name;
 
 -- 8. v_team_goal_difference: Gólkülönbségek (heatmaphez)
 CREATE OR REPLACE VIEW v_team_goal_difference AS
