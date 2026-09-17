@@ -54,7 +54,6 @@ def main():
 
         else:
             logging.info("Datas already exists")        
-        conn.close()
     except Exception as e:
         logging.error("ETL process failed",exc_info=True)
         raise

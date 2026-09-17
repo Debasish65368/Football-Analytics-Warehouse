@@ -1,4 +1,9 @@
 # Byte-compiled / cache
 __pycache__/
+*.pyc
 .env
 Data/Matches_with_id.csv
+
+# Power BI audit artifacts
+Power-BI/*.zip
+Power-BI/unzipped/
