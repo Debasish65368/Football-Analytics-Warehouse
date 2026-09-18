@@ -53,39 +53,61 @@ The goal was to simulate, as closely as possible in a solo project, what a junio
 ## 🏗️ Architecture
 
 ```mermaid
-flowchart LR
-    CSV[("📄 Matches.csv\n230,554 rows")]
+flowchart TB
+    CSV[("📄 Data/Matches.csv\n230,554 rows")]
+    Host["🖥️ Host machine\ndocker-compose up --build"]
 
-    subgraph Docker["🐳 Docker Compose"]
-        direction LR
-        subgraph AppContainer["football-app container"]
-            direction TB
-            Clean["🧹 Clean & Validate\n(pandas)"]
-            Load["📥 Load Dimensions\n(team · division · date)"]
-            Map["🔗 Map FK Keys\nto fact rows"]
-            Fact["🏗️ Bulk-load\nfact_matches"]
-            Views["📊 Build 12\nSQL Views"]
-            Clean --> Load --> Map --> Fact --> Views
-        end
+    subgraph Compose["🐳 Docker Compose"]
+        direction TB
         subgraph DBContainer["football-db container"]
-            PG[("🐘 PostgreSQL 15\nStar Schema")]
+            direction TB
+            PGInit["Postgres 15 boot"]
+            HC{"pg_isready\nhealthcheck\npassing?"}
+            PG[("🐘 football_stats DB\ndim_team · dim_date ·\ndim_division · fact_matches")]
+            
+            PGInit --> HC
+            HC -- "not yet" --> HC
+            HC -- "healthy" --> PG
         end
-        AppContainer -- "psycopg2\n(waits on healthcheck)" --> DBContainer
+
+        subgraph AppContainer["football-app container (depends_on: service_healthy)"]
+            direction TB
+            Main["main.py — orchestrator"]
+            Check{"connect_db.py\nensure_database_initialized()\ntables exist AND populated?"}
+            Skip["Skip — 'Data already exists'\nexits in <1s"]
+            DDL["Run Create_tables.sql\n(schema + indexes)"]
+            Clean["clean_data.py\nclean_and_validate()\nnormalize cols · drop nulls ·\nstrip whitespace · reject\nnegative goals & future dates"]
+            LoadDims["insert_datas.py\nload_teams() · load_divisions()\n· load_dates()\nON CONFLICT DO NOTHING"]
+            Map["clean_data.py\nmap_dimensions_to_fact()\nname → surrogate key"]
+            LoadFact["insert_datas.py\nload_matches()\nbulk INSERT fact_matches"]
+            Views["insert_datas.py\ncreate_views()\nruns create_views.sql\n(12 views)"]
+            
+            Main --> Check
+            Check -- "yes" --> Skip
+            Check -- "no" --> DDL --> Clean --> LoadDims --> Map --> LoadFact --> Views
+        end
+        
+        AppContainer -- "psycopg2" --> DBContainer
     end
 
-    BI["📈 Power BI\n4-page dashboard"]
+    BI["📈 Power BI\n4-page dashboard\nreads only the 12 views"]
 
+    Host --> Compose
     CSV --> Clean
-    DBContainer -- "SQL views" --> BI
+    Views --> PG
+    PG -- "SQL views" --> BI
 
     style CSV fill:#1f2937,color:#fff,stroke:#60a5fa
     style PG fill:#336791,color:#fff,stroke:#60a5fa
     style BI fill:#F2C811,color:#000,stroke:#b8960c
+    style Check fill:#7c2d12,color:#fff,stroke:#f97316
+    style HC fill:#7c2d12,color:#fff,stroke:#f97316
+    style Skip fill:#052e16,color:#fff,stroke:#22c55e
     style AppContainer fill:#0d1117,color:#fff,stroke:#3776AB
     style DBContainer fill:#0d1117,color:#fff,stroke:#336791
 ```
 
-Everything left of Power BI runs from a **single `docker-compose up --build`** — Postgres initializes and passes its healthcheck, then (and only then) the ETL container connects and runs.
+Everything left of Power BI runs from a single `docker-compose up --build`. Two gates matter here: `football-db` won't be considered "up" by Compose until its own `pg_isready` healthcheck passes, and `football-app` won't even attempt a connection until Compose reports that healthcheck green (`depends_on: condition: service_healthy`) — which is what eliminates the startup-race crash documented below. A second, independent gate then runs inside the app container itself: `ensure_database_initialized()` checks whether the warehouse already has data before doing any work at all.
 
 ---
 
@@ -160,26 +182,30 @@ sequenceDiagram
     participant PG as PostgreSQL
 
     Main->>DB: ensure_database_initialized()
-    DB->>PG: check required tables exist + have data
+    DB->>PG: check required tables exist + have rows
     alt already populated
         PG-->>Main: skip — "Data already exists"
     else empty / missing
-        DB->>PG: run Create_tables.sql
-        Main->>Clean: read Matches.csv → clean_and_validate()
-        Clean->>Clean: normalize columns, drop nulls,\nstrip whitespace, reject negative goals\n& future-dated matches
+        DB->>PG: run Create_tables.sql\n(DDL + indexes + constraints)
+        Main->>Clean: read Data/Matches.csv → clean_and_validate()
+        Clean->>Clean: normalize column names\ndrop null-critical rows\nstrip team-name whitespace\nreject negative goals\nreject future-dated matches
+        Clean-->>Main: cleaned DataFrame
         Main->>Load: load_teams() / load_divisions() / load_dates()
-        Load->>PG: INSERT ... ON CONFLICT DO NOTHING (dims)
+        Load->>PG: INSERT ... ON CONFLICT DO NOTHING\n(dimension tables)
+        PG-->>Load: surrogate keys assigned
         Main->>Clean: map_dimensions_to_fact()
         Clean->>Clean: team/division name → surrogate key\nseason = f(division.season_style)
+        Clean-->>Main: fact-ready DataFrame
         Main->>Load: load_matches()
-        Load->>PG: bulk INSERT fact_matches\n(ON CONFLICT DO NOTHING)
+        Load->>PG: bulk INSERT fact_matches\n(ON CONFLICT DO NOTHING\non the unique constraint)
         Main->>Load: create_views()
-        Load->>PG: run create_views.sql (12 views)
+        Load->>PG: run create_views.sql\n(12 views, no view depends\non another)
+        PG-->>Main: warehouse ready
     end
-    Main->>PG: close connection
+    Main->>PG: close connection pool
 ```
 
-**Idempotency, concretely:** `ensure_database_initialized()` doesn't just check the tables exist — it checks each one actually has rows. Re-running `docker-compose up` against a warehouse that's already loaded exits in under a second instead of trying (and failing) to re-insert 230K rows.
+**Idempotency, concretely:** `ensure_database_initialized()` doesn't just check the tables exist — it checks each one actually has rows. Re-running `docker-compose up` against a warehouse that's already loaded exits in under a second instead of trying (and failing) to re-insert 230K rows. The same guarantee is enforced a second, independent way at the database level: `fact_matches` carries a `UNIQUE(date_key, home_team_key, away_team_key)` constraint, so even a bypass of the Python-level check couldn't produce duplicate fact rows.
 
 ---
 
@@ -242,7 +268,7 @@ These weren't hypothetical — each one broke the pipeline or the data at some p
 
 ## 📁 Project Structure
 
-```
+```text
 Football-Analytics-Warehouse/
 ├── Data/
 │   ├── Matches.csv            # 230,554 raw match records, 2000–2025
@@ -304,17 +330,7 @@ A 4-page interactive report sits on top of the warehouse, built entirely from th
 | **Top 20 Leaderboards** | Most aggressive teams, top ELO readings, most clinical finishers, shots vs. shooting accuracy |
 | **Win Ratios & Rivalries** | Top 20 teams by win ratio, biggest rivalry blowouts by aggregate goal difference |
 
-### League Overview
-![League Overview](screenshots/league-overview.png)
-
-### Team Performance
-![Team Performance](screenshots/team-performance.png)
-
-### Top 20 Leaderboards
-![Top 20 Leaderboards](screenshots/top-20-leaderboards.png)
-
-### Win Ratios & Rivalries
-![Win Ratios & Rivalries](screenshots/win-ratios-rivalries.png)
+(Screenshots of all four pages live in `/screenshots` and render in the GitHub view of this README.)
 
 ---
 
