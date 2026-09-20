@@ -330,6 +330,22 @@ A 4-page interactive report sits on top of the warehouse, built entirely from th
 | **Top 20 Leaderboards** | Most aggressive teams, top ELO readings, most clinical finishers, shots vs. shooting accuracy |
 | **Win Ratios & Rivalries** | Top 20 teams by win ratio, biggest rivalry blowouts by aggregate goal difference |
 
+<div align="center">
+
+**League Overview**
+![League Overview](screenshots/league-overview.png)
+
+**Team Performance**
+![Team Performance](screenshots/team-performance.png)
+
+**Top 20 Leaderboards**
+![Top 20 Leaderboards](screenshots/top-20-leaderboards.png)
+
+**Win Ratios & Rivalries**
+![Win Ratios & Rivalries](screenshots/win-ratios-rivalries.png)
+
+</div>
+
 (Screenshots of all four pages live in `/screenshots` and render in the GitHub view of this README.)
 
 ---
