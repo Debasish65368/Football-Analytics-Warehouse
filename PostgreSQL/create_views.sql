@@ -112,7 +112,7 @@ FROM fact_matches m
 JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
 GROUP BY t.team_name;
 
--- 6. v_team_aggressiveness: Fouls / lapok: agresszivitás mutató
+-- 6. v_team_aggressiveness: Fouls and cards — aggressiveness indicator
 CREATE OR REPLACE VIEW v_team_aggressiveness AS
 SELECT 
     t.team_name,
@@ -135,7 +135,7 @@ FROM fact_matches m
 JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
 GROUP BY t.team_name;
 
--- 7. v_team_scoring_efficiency: Csapat hatékonysági mutató: gól/lövés, gól/kapura lövés
+-- 7. v_team_scoring_efficiency: Team scoring efficiency — goals per shot, goals per shot on target
 CREATE OR REPLACE VIEW v_team_scoring_efficiency AS
 SELECT 
     t.team_name,
@@ -163,7 +163,7 @@ FROM fact_matches m
 JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
 GROUP BY t.team_name;
 
--- 8. v_team_goal_difference: Gólkülönbségek (heatmaphez)
+-- 8. v_team_goal_difference: Head-to-head goal differences (for rivalry heatmap)
 CREATE OR REPLACE VIEW v_team_goal_difference AS
 SELECT 
     ht.team_name AS home_team,

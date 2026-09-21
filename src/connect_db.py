@@ -65,7 +65,23 @@ def ensure_database_initialized() -> bool:
                         has_data = False
                         break
             else:
-                # Create missing tables
+                present = required_tables & existing_tables
+                missing = required_tables - existing_tables
+
+                if present:
+                    # PARTIAL schema: some required tables exist, others don't.
+                    # Running Create_tables.sql would DROP existing tables and
+                    # destroy data. Abort with a clear error instead.
+                    raise RuntimeError(
+                        f"Partial database schema detected — automatic initialization aborted "
+                        f"to prevent data loss. "
+                        f"Present tables: {sorted(present)}. "
+                        f"Missing tables: {sorted(missing)}. "
+                        f"Resolve manually: either drop the remaining tables to allow a "
+                        f"clean initialization, or create the missing tables by hand."
+                    )
+
+                # Completely fresh database: no required tables exist at all.
                 with open(CREATE_TABLES_PATH, "r", encoding="utf-8") as f:
                     cursor.execute(f.read())
                 logging.info("Missing tables created from SQL script.")

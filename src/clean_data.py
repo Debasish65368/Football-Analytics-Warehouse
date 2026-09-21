@@ -34,7 +34,11 @@ def map_dimensions_to_fact(df: pd.DataFrame) -> pd.DataFrame:
     matches_df = df.copy()
 
     # Map teams
-    teams_df = pd.read_sql("SELECT * FROM dim_team;", conn)
+    with conn.cursor() as cur:
+        cur.execute("SELECT team_key, team_name FROM dim_team;")
+        rows = cur.fetchall()
+        cols = [desc[0] for desc in cur.description]
+    teams_df = pd.DataFrame(rows, columns=cols)
     team_mapping = dict(zip(teams_df['team_name'], teams_df['team_key']))
     matches_df = matches_df.rename(columns={"home_team": "home_team_key", "away_team": "away_team_key"})
     matches_df['home_team_key'] = matches_df['home_team_key'].map(team_mapping)
@@ -46,7 +50,11 @@ def map_dimensions_to_fact(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"Team mapping failed! Unmapped Home Teams: {missing_home}, Away Teams: {missing_away}")
 
     # Map divisions
-    divs_df = pd.read_sql("SELECT * FROM dim_division;", conn)
+    with conn.cursor() as cur:
+        cur.execute("SELECT division_key, division_name, season_style FROM dim_division;")
+        rows = cur.fetchall()
+        cols = [desc[0] for desc in cur.description]
+    divs_df = pd.DataFrame(rows, columns=cols)
     div_mapping = dict(zip(divs_df['division_name'], divs_df['division_key']))
     matches_df['division_key'] = matches_df['division_name'].map(div_mapping)
 

@@ -250,7 +250,7 @@ These weren't hypothetical — each one broke the pipeline or the data at some p
 | **Non-calendar leagues mis-bucketed into the wrong season** | Season logic hardcoded `Aug → May` for every division, which is wrong for USA/SWE/NOR/IRL (calendar-year leagues) | Added `season_style` to `dim_division`; `map_dimensions_to_fact()` branches per-division |
 | **ELO silently losing precision** | ELO was originally typed `INT`, truncating decimal ratings | Re-typed to `NUMERIC(7,2)` |
 | **`avg_goals_per_team` double-counting or mislabeling** | Naive query only looked at the home-side perspective | Rebuilt with a `UNION ALL` of home + away perspectives so every match counts once per team, correctly attributed |
-| **Destructive re-init on partial schema** | Early version dropped/recreated tables on *any* table-set mismatch, risking data loss | Guarded initialization to only create genuinely missing tables and check for populated data before treating the DB as "ready" |
+| **Destructive re-init on partial schema** | Early version dropped/recreated tables on *any* table-set mismatch, risking data loss | Initialization now distinguishes a completely fresh database (safe to bootstrap) from a partial schema (aborts with a clear error to prevent data loss) |
 
 ---
 

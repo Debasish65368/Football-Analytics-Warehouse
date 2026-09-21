@@ -47,13 +47,13 @@ def main():
 
             # Insert matches
             load_matches(df_mapped)
-            logging.info("Datas loaded into the database successfully!")
+            logging.info("Data loaded into the database successfully!")
 
-            # ---> View-k létrehozása
+            # Create analytical views
             create_views(conn)
 
         else:
-            logging.info("Datas already exists")        
+            logging.info("Data already exists")        
     except Exception as e:
         logging.error("ETL process failed",exc_info=True)
         raise

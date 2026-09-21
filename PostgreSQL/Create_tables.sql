@@ -1,4 +1,4 @@
--- 1. Először töröljük a view-kat
+-- 1. Drop all dependent views first
 DROP VIEW IF EXISTS 
     avg_goals_per_team,
     win_ratio_per_team,
@@ -14,7 +14,7 @@ DROP VIEW IF EXISTS
     v_team_performance_tier
 CASCADE;
 
--- 2. Ezután a táblákat
+-- 2. Then drop the tables
 DROP TABLE IF EXISTS fact_matches CASCADE;
 DROP TABLE IF EXISTS dim_division CASCADE;
 DROP TABLE IF EXISTS dim_date CASCADE;
@@ -76,7 +76,7 @@ CREATE TABLE fact_matches (
     UNIQUE (date_key, home_team_key, away_team_key)
 );
 
--- Indexek a gyors kereséshez
+-- Indexes for fast lookups
 CREATE INDEX idx_fact_matches_date ON fact_matches(date_key);
 CREATE INDEX idx_fact_matches_division ON fact_matches(division_key);
 CREATE INDEX idx_fact_matches_teams ON fact_matches(home_team_key, away_team_key);
