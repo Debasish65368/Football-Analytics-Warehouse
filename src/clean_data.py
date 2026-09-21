@@ -75,10 +75,20 @@ def map_dimensions_to_fact(df: pd.DataFrame) -> pd.DataFrame:
 
     def get_season(row):
         y = row['year']
+        m = row['month']
         if row['season_style'] == 'CALENDAR':
             return str(y)
         else:
-            return f"{y}-{(y+1)%100:02d}" if row['month'] >= 8 else f"{y-1}-{y%100:02d}"
+            # AUG_MAY divisions: month >= 7 starts the new season.
+            # Most European leagues open in late July or August, so July openers
+            # belong to the upcoming season (e.g. 2000-07-28 → "2000-01").
+            #
+            # ONE EXCEPTION: July 2020 matches belong to 2019-20.
+            # COVID-19 suspended play from March–June 2020; leagues finished
+            # their 2019-20 seasons in June/July 2020 before 2020-21 opened in Aug/Sep.
+            if y == 2020 and m == 7:
+                return "2019-20"
+            return f"{y}-{(y+1)%100:02d}" if m >= 7 else f"{y-1}-{y%100:02d}"
 
     matches_df['season'] = matches_df.apply(get_season, axis=1)
     matches_df.drop(columns=['match_date_dt', 'year', 'month', 'season_style'], inplace=True)
