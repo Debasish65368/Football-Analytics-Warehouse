@@ -116,9 +116,11 @@ def drop_null_values(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
 def validate_values(df: pd.DataFrame) -> pd.DataFrame:
     """
     Validate dataset values:
+    - Fix known encoding-mangled team names
     - Remove negative goal counts
     - Remove matches with future dates
     """
@@ -127,6 +129,30 @@ def validate_values(df: pd.DataFrame) -> pd.DataFrame:
     # Strip trailing spaces from team names
     df['home_team'] = df['home_team'].str.strip()
     df['away_team'] = df['away_team'].str.strip()
+
+    # --- Explicit fixes for encoding-mangled team names in the source CSV ---
+    # "Preussen Munster" is the ASCII variant; the proper German name uses ß and ü.
+    # "Preu\u00c3\u0178en M\u00c3\u00bcnster" is double-encoded mojibake of "Preußen Münster":
+    #   the UTF-8 bytes for ß/ü were re-encoded, producing Ã+Ÿ and Ã+¼.
+    # "King\u00c2\u2019s Lynn" is a double-encoded right single quote (Â + '):
+    #   the original UTF-8 bytes for ' (U+2019: E2 80 99) were re-encoded as
+    #   UTF-8 → Latin-1 → UTF-8, producing C3 82 (Â) + E2 80 99 (').
+    TEAM_NAME_FIXES = {
+        "Preussen Munster": "Preu\u00dfen M\u00fcnster",              # ASCII → proper German
+        "Preu\u00c3\u0178en M\u00c3\u00bcnster": "Preu\u00dfen M\u00fcnster",  # double-encoded mojibake → proper German
+        "King\u00c2\u2019s Lynn": "King's Lynn",                       # Â' (double-encoded) → ASCII apostrophe
+    }
+    df['home_team'] = df['home_team'].replace(TEAM_NAME_FIXES)
+    df['away_team'] = df['away_team'].replace(TEAM_NAME_FIXES)
+
+    # Log any team names that still contain non-ASCII characters
+    all_teams = set(df['home_team'].dropna().unique()) | set(df['away_team'].dropna().unique())
+    non_ascii_teams = sorted([t for t in all_teams if any(ord(c) > 127 for c in t)])
+    if non_ascii_teams:
+        logging.warning(
+            "Team names with non-ASCII characters after cleaning: %s",
+            non_ascii_teams
+        )
 
     # Remove negative goals
     df = df[(df['ft_home_goals'] >= 0) & (df['ft_away_goals'] >= 0)]
