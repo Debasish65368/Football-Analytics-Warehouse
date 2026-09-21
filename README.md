@@ -250,7 +250,8 @@ These weren't hypothetical — each one broke the pipeline or the data at some p
 | **Non-calendar leagues mis-bucketed into the wrong season** | Season logic hardcoded `Aug → May` for every division, which is wrong for USA/SWE/NOR/IRL (calendar-year leagues) | Added `season_style` to `dim_division`; `map_dimensions_to_fact()` branches per-division |
 | **ELO silently losing precision** | ELO was originally typed `INT`, truncating decimal ratings | Re-typed to `NUMERIC(7,2)` |
 | **`avg_goals_per_team` double-counting or mislabeling** | Naive query only looked at the home-side perspective | Rebuilt with a `UNION ALL` of home + away perspectives so every match counts once per team, correctly attributed |
-| **Destructive re-init on partial schema** | Early version dropped/recreated tables on *any* table-set mismatch, risking data loss | Initialization now distinguishes a completely fresh database (safe to bootstrap) from a partial schema (aborts with a clear error to prevent data loss) |
+| **Destructive re-init on partial schema** | Early version dropped/recreated tables on *any* table-set mismatch, risking data loss | Initialization now distinguishes a completely fresh database (safe to bootstrap) from a partial schema (aborts with a clear error to prevent data loss). `Create_tables.sql` uses `IF NOT EXISTS` and contains no `DROP` statements; destructive resets are in a separate `PostgreSQL/reset.sql` for explicit manual use only |
+| **Goals-per-shot inflated ~16× (1.84 vs ~0.11)** | `v_team_scoring_efficiency` divided goals from ALL matches by shots from only the ~50% of matches that have shot data — a NULL coverage mismatch. Teams like East Stirling (502 matches, only 36 with shots) showed 1.84 goals/shot instead of ~0.166 | Used `SUM(goals) FILTER (WHERE shots IS NOT NULL) / NULLIF(SUM(shots), 0)` so numerator and denominator always cover the same match set. Same fix applied to `v_team_shooting_efficiency` (shots/target) and `v_team_aggressiveness` (fouls/cards). Added `matches_with_shot_data` / `matches_with_card_data` and `sufficient_data` columns |
 
 ---
 
@@ -274,8 +275,9 @@ Football-Analytics-Warehouse/
 │   ├── Matches.csv            # 230,554 raw match records, 2000–2025
 │   └── test_data.csv
 ├── PostgreSQL/
-│   ├── Create_tables.sql      # Star schema DDL + indexes
-│   └── create_views.sql       # All 12 analytical views
+│   ├── Create_tables.sql      # Star schema DDL + indexes (non-destructive, IF NOT EXISTS)
+│   ├── create_views.sql       # All 12 analytical views
+│   └── reset.sql              # Manual-only destructive reset (DROP all views + tables)
 ├── Power-BI/
 │   └── Football-dashboard.pbix
 ├── screenshots/                # Dashboard page exports (used below)
@@ -314,6 +316,13 @@ docker-compose up --build
 ```
 
 That's it — no manual `psql` steps, no separate schema-loading command. On first launch the app container waits for Postgres's healthcheck, creates the star schema, loads all 230K matches, and builds every view. On any subsequent launch, it detects the warehouse is already populated and exits cleanly.
+
+If you need to **fully reset** the warehouse (drop all tables and views), run `PostgreSQL/reset.sql` manually against the database, then re-run the pipeline:
+
+```bash
+docker exec -i football-db psql -U postgres -d Football_stats < PostgreSQL/reset.sql
+docker-compose up --build
+```
 
 Once it's running, point Power BI (or any SQL client) at `localhost:5432` / `Football_stats` and query any of the 12 views directly — no raw-table knowledge required.
 
@@ -356,6 +365,34 @@ A 4-page interactive report sits on top of the warehouse, built entirely from th
 - **Views, not materialized views** — with 230K rows, all 12 views execute fast enough on read that materializing them added complexity (refresh timing, staleness) without a real performance win. This is a documented trade-off, not an oversight — it's the first thing to revisit if the dataset grows 10x.
 - **`ON CONFLICT DO NOTHING` everywhere** — every loader is safe to re-run; the pipeline's idempotency is enforced at the SQL constraint level, not just in application logic, so it holds even if `main.py`'s pre-check is ever bypassed.
 - **`season_style` as data, not code** — instead of hardcoding a list of calendar-year leagues inside the Python logic, it's stored as a column on `dim_division`, so adding a new calendar-year league later is a data change, not a code change.
+
+---
+
+## 📋 Data Quality Notes
+
+The source CSV (`Data/Matches.csv`, 230,554 rows) has significant NULL coverage gaps. The ETL pipeline logs these on every run; representative numbers from the current dataset:
+
+| Column group | NULL % | Impact |
+|---|---|---|
+| `home_shots` / `away_shots` | 50.2% | ~626 of 1,206 teams have zero shot data |
+| `home_target` / `away_target` | 50.6% | Shooting accuracy unavailable for half the matches |
+| `home_fouls` / `away_fouls` | 50.6% | ~627 teams have no foul/card data at all |
+| `home_yellow` / `away_yellow` | 48.3% | Card-based metrics cover slightly more matches |
+| `home_red` / `away_red` | 48.3% | Same coverage as yellow cards |
+| `home_elo` / `away_elo` | 38.6% | ELO ratings absent for ~39% of matches |
+| `ht_home_goals` / `ht_away_goals` | 23.7% | Half-time data missing for older matches |
+
+All analytical views that use these nullable columns now include a `matches_with_shot_data` or `matches_with_card_data` count, and a `sufficient_data` boolean (≥ 100 qualifying matches) so downstream consumers can filter small-sample teams.
+
+---
+
+## 📅 Season Logic
+
+For `AUG_MAY` divisions, the season boundary is **month ≥ 7** (July). Most European leagues open in late July or early August, so a July match date belongs to the upcoming season (e.g., `2000-07-28` → `2000-01`).
+
+**Exception — July 2020:** COVID-19 suspended play from March–June 2020. Leagues finished their 2019-20 seasons in June/July 2020 before 2020-21 opened in August/September. All July 2020 matches in `AUG_MAY` divisions are assigned to `2019-20`.
+
+`CALENDAR` divisions (USA, SWE, NOR, IRL, FIN, JAP, CHN, BRA, ARG) use the calendar year as-is.
 
 ---
 
