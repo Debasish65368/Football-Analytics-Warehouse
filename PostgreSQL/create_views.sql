@@ -38,9 +38,10 @@ WITH all_team_matches AS (
 )
 SELECT
     t.team_name,
-    AVG(a.goals_scored)                          AS avg_goals_scored,
-    AVG(a.goals_conceded)                        AS avg_goals_conceded,
-    AVG(a.goals_scored + a.goals_conceded)       AS avg_total_goals
+    COUNT(*)                                      AS matches_played,
+    AVG(a.goals_scored)                           AS avg_goals_scored,
+    AVG(a.goals_conceded)                         AS avg_goals_conceded,
+    AVG(a.goals_scored + a.goals_conceded)        AS avg_total_goals
 FROM all_team_matches a
 JOIN dim_team t ON t.team_key = a.team_key
 GROUP BY t.team_name;
@@ -94,25 +95,49 @@ WHERE (
 GROUP BY t.team_name, DATE_TRUNC('month', d.full_date);
 
 -- 5. v_team_shooting_efficiency
+-- shooting_accuracy is computed ONLY over matches where BOTH shots and target
+-- are non-null, so the numerator and denominator always cover the same matches.
+-- Returns NULL (not 0) when no qualifying matches exist.
 CREATE OR REPLACE VIEW v_team_shooting_efficiency AS
 SELECT 
     t.team_name,
     COUNT(*) AS matches_played,
     COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_shots ELSE m.away_shots END), 0) AS total_shots,
     COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_target ELSE m.away_target END), 0) AS total_on_target,
-    COALESCE(
-        ROUND(
-            COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_target ELSE m.away_target END), 0)::numeric /
-            NULLIF(COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_shots ELSE m.away_shots END), 0), 0), 
-            3
-        ),
-        0
-    ) AS shooting_accuracy
+    -- Count of matches where both shots and on-target are recorded
+    COUNT(*) FILTER (
+        WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_shots  ELSE m.away_shots  END IS NOT NULL
+          AND CASE WHEN m.home_team_key = t.team_key THEN m.home_target ELSE m.away_target END IS NOT NULL
+    ) AS matches_with_shot_data,
+    ROUND(
+        SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_target ELSE m.away_target END)
+            FILTER (
+                WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_shots  ELSE m.away_shots  END IS NOT NULL
+                  AND CASE WHEN m.home_team_key = t.team_key THEN m.home_target ELSE m.away_target END IS NOT NULL
+            )::numeric
+        / NULLIF(
+            SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_shots ELSE m.away_shots END)
+                FILTER (
+                    WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_shots  ELSE m.away_shots  END IS NOT NULL
+                      AND CASE WHEN m.home_team_key = t.team_key THEN m.home_target ELSE m.away_target END IS NOT NULL
+                ),
+            0
+          ),
+        3
+    ) AS shooting_accuracy,
+    -- sufficient_data: true when at least 100 matches have shot data
+    COUNT(*) FILTER (
+        WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_shots  ELSE m.away_shots  END IS NOT NULL
+          AND CASE WHEN m.home_team_key = t.team_key THEN m.home_target ELSE m.away_target END IS NOT NULL
+    ) >= 100 AS sufficient_data
 FROM fact_matches m
 JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
 GROUP BY t.team_name;
 
 -- 6. v_team_aggressiveness: Fouls and cards — aggressiveness indicator
+-- aggressiveness_score is divided by the count of matches where fouls, yellow,
+-- AND red are all non-null, so the score is not diluted by matches with no card data.
+-- Returns NULL when no qualifying matches exist.
 CREATE OR REPLACE VIEW v_team_aggressiveness AS
 SELECT 
     t.team_name,
@@ -120,22 +145,58 @@ SELECT
     COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_fouls ELSE m.away_fouls END), 0) AS total_fouls,
     COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_yellow ELSE m.away_yellow END), 0) AS total_yellow,
     COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_red ELSE m.away_red END), 0) AS total_red,
-    COALESCE(
-        ROUND(
-            (
-                COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_yellow ELSE m.away_yellow END),0)*0.5 +
-                COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_red ELSE m.away_red END),0)*1 +
-                COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_fouls ELSE m.away_fouls END),0)*0.1
-            ) / COUNT(*),
-            2
-        ),
-        0
-    ) AS aggressiveness_score
+    -- Count of matches where fouls, yellow, and red are all recorded
+    COUNT(*) FILTER (
+        WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_fouls  ELSE m.away_fouls  END IS NOT NULL
+          AND CASE WHEN m.home_team_key = t.team_key THEN m.home_yellow ELSE m.away_yellow END IS NOT NULL
+          AND CASE WHEN m.home_team_key = t.team_key THEN m.home_red    ELSE m.away_red    END IS NOT NULL
+    ) AS matches_with_card_data,
+    ROUND(
+        (
+            SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_yellow ELSE m.away_yellow END)
+                FILTER (
+                    WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_fouls  ELSE m.away_fouls  END IS NOT NULL
+                      AND CASE WHEN m.home_team_key = t.team_key THEN m.home_yellow ELSE m.away_yellow END IS NOT NULL
+                      AND CASE WHEN m.home_team_key = t.team_key THEN m.home_red    ELSE m.away_red    END IS NOT NULL
+                ) * 0.5
+            + SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_red ELSE m.away_red END)
+                FILTER (
+                    WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_fouls  ELSE m.away_fouls  END IS NOT NULL
+                      AND CASE WHEN m.home_team_key = t.team_key THEN m.home_yellow ELSE m.away_yellow END IS NOT NULL
+                      AND CASE WHEN m.home_team_key = t.team_key THEN m.home_red    ELSE m.away_red    END IS NOT NULL
+                ) * 1
+            + SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_fouls ELSE m.away_fouls END)
+                FILTER (
+                    WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_fouls  ELSE m.away_fouls  END IS NOT NULL
+                      AND CASE WHEN m.home_team_key = t.team_key THEN m.home_yellow ELSE m.away_yellow END IS NOT NULL
+                      AND CASE WHEN m.home_team_key = t.team_key THEN m.home_red    ELSE m.away_red    END IS NOT NULL
+                ) * 0.1
+        )
+        / NULLIF(
+            COUNT(*) FILTER (
+                WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_fouls  ELSE m.away_fouls  END IS NOT NULL
+                  AND CASE WHEN m.home_team_key = t.team_key THEN m.home_yellow ELSE m.away_yellow END IS NOT NULL
+                  AND CASE WHEN m.home_team_key = t.team_key THEN m.home_red    ELSE m.away_red    END IS NOT NULL
+            ),
+            0
+          ),
+        2
+    ) AS aggressiveness_score,
+    -- sufficient_data: true when at least 100 matches have card data
+    COUNT(*) FILTER (
+        WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_fouls  ELSE m.away_fouls  END IS NOT NULL
+          AND CASE WHEN m.home_team_key = t.team_key THEN m.home_yellow ELSE m.away_yellow END IS NOT NULL
+          AND CASE WHEN m.home_team_key = t.team_key THEN m.home_red    ELSE m.away_red    END IS NOT NULL
+    ) >= 100 AS sufficient_data
 FROM fact_matches m
 JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
 GROUP BY t.team_name;
 
 -- 7. v_team_scoring_efficiency: Team scoring efficiency — goals per shot, goals per shot on target
+-- Goals are counted ONLY in matches where the corresponding denominator field (shots or
+-- on-target) is non-null, so numerator and denominator always cover the same match set.
+-- This prevents inflated ratios when a team has many matches without shot data.
+-- Returns NULL (not 0) when there is no data.
 CREATE OR REPLACE VIEW v_team_scoring_efficiency AS
 SELECT 
     t.team_name,
@@ -143,22 +204,34 @@ SELECT
     COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.ft_home_goals ELSE m.ft_away_goals END), 0) AS total_goals,
     COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_shots ELSE m.away_shots END), 0) AS total_shots,
     COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_target ELSE m.away_target END), 0) AS total_on_target,
-    COALESCE(
-        ROUND(
-            COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.ft_home_goals ELSE m.ft_away_goals END),0)::numeric /
-            NULLIF(COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_shots ELSE m.away_shots END),0),0),
-            3
-        ),
-        0
+    -- Count of matches where shot data is recorded
+    COUNT(*) FILTER (
+        WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_shots ELSE m.away_shots END IS NOT NULL
+    ) AS matches_with_shot_data,
+    -- goals_per_shot: numerator counts goals ONLY in matches where shots IS NOT NULL
+    ROUND(
+        SUM(CASE WHEN m.home_team_key = t.team_key THEN m.ft_home_goals ELSE m.ft_away_goals END)
+            FILTER (WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_shots ELSE m.away_shots END IS NOT NULL)::numeric
+        / NULLIF(
+            SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_shots ELSE m.away_shots END),
+            0
+          ),
+        3
     ) AS goals_per_shot,
-    COALESCE(
-        ROUND(
-            COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.ft_home_goals ELSE m.ft_away_goals END),0)::numeric /
-            NULLIF(COALESCE(SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_target ELSE m.away_target END),0),0),
-            3
-        ),
-        0
-    ) AS goals_per_on_target
+    -- goals_per_on_target: numerator counts goals ONLY in matches where target IS NOT NULL
+    ROUND(
+        SUM(CASE WHEN m.home_team_key = t.team_key THEN m.ft_home_goals ELSE m.ft_away_goals END)
+            FILTER (WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_target ELSE m.away_target END IS NOT NULL)::numeric
+        / NULLIF(
+            SUM(CASE WHEN m.home_team_key = t.team_key THEN m.home_target ELSE m.away_target END),
+            0
+          ),
+        3
+    ) AS goals_per_on_target,
+    -- sufficient_data: true when at least 100 matches have shot data
+    COUNT(*) FILTER (
+        WHERE CASE WHEN m.home_team_key = t.team_key THEN m.home_shots ELSE m.away_shots END IS NOT NULL
+    ) >= 100 AS sufficient_data
 FROM fact_matches m
 JOIN dim_team t ON t.team_key IN (m.home_team_key, m.away_team_key)
 GROUP BY t.team_name;
