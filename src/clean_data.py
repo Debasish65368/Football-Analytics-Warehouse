@@ -155,11 +155,19 @@ def validate_values(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     # Remove negative goals
+    count_before = len(df)
     df = df[(df['ft_home_goals'] >= 0) & (df['ft_away_goals'] >= 0)]
+    count_after = len(df)
+    logging.info("Negative goals removal: %d -> %d rows (dropped %d)",
+                 count_before, count_after, count_before - count_after)
 
     # Remove future matches
     df['match_date'] = pd.to_datetime(df['match_date'], errors='coerce')
+    count_before = len(df)
     df = df[df['match_date'].dt.date <= today]
+    count_after = len(df)
+    logging.info("Future dates removal: %d -> %d rows (dropped %d)",
+                 count_before, count_after, count_before - count_after)
 
     return df
 
@@ -168,15 +176,29 @@ def clean_and_validate(df: pd.DataFrame) -> pd.DataFrame:
     Clean and validate a matches DataFrame.
     Steps:
     1. Normalize column names
-    2. Drop rows with null values
-    3. Validate logical consistency of data
+    2. Log NULL percentages per column
+    3. Drop rows with null values in mandatory columns
+    4. Validate logical consistency of data (negative goals, future dates, encoding)
     """
 
     df = validate_data_column_names(df)
+
+    # Log NULL percentage of every column once after loading
+    logging.info("Column NULL percentages after loading (%d rows):", len(df))
+    for col in df.columns:
+        null_pct = df[col].isna().mean() * 100
+        logging.info("  %-20s %5.1f%%", col, null_pct)
+
+    # Drop rows with null values in mandatory columns
+    count_before = len(df)
     df = drop_null_values(df)
+    count_after = len(df)
+    logging.info("Null-critical drop: %d -> %d rows (dropped %d)",
+                 count_before, count_after, count_before - count_after)
+
+    # Validate values (encoding fixes, negative goals, future dates — each logged internally)
     df = validate_values(df)
 
-
-    logging.info("Values validated successfully.")
+    logging.info("Values validated successfully. Final row count: %d", len(df))
 
     return df
